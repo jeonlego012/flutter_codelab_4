@@ -95,6 +95,8 @@ class HomePage extends StatelessWidget {
                   GuestBook(
                     addMessage: (String message) =>
                         appState.addMessageToGuestBook(message),
+                    deleteMessage: (String messageID) =>
+                        appState.deleteMessageFromGuestBook(messageID),
                     messages: appState.guestBookMessages,
                   ),
                 ],
@@ -136,8 +138,10 @@ class ApplicationState extends ChangeNotifier {
           snapshot.docs.forEach((document) {
             _guestBookMessages.add(
               GuestBookMessage(
+                id: document.id,
                 name: document.data()['name'],
                 message: document.data()['text'],
+                time: document.data()['timestamp'].toDate(),
               ),
             );
           });
@@ -262,24 +266,43 @@ class ApplicationState extends ChangeNotifier {
 
     return FirebaseFirestore.instance.collection('guestbook').add({
       'text': message,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'timestamp': DateTime.now(),
       'name': FirebaseAuth.instance.currentUser!.displayName,
       'userId': FirebaseAuth.instance.currentUser!.uid,
     });
   }
+
+  Future<void> deleteMessageFromGuestBook(String messageID) async {
+    return FirebaseFirestore.instance
+        .collection('guestbook')
+        .doc(messageID)
+        .delete()
+        .then((value) => print('Message Deleted!'))
+        .catchError((error) => print('Failed to delete message $error'));
+  }
 }
 
 class GuestBookMessage {
-  GuestBookMessage({required this.name, required this.message});
+  GuestBookMessage(
+      {required this.id,
+      required this.name,
+      required this.message,
+      required this.time});
+  final String id;
   final String name;
   final String message;
+  final DateTime time;
 }
 
 enum Attending { yes, no, unknown }
 
 class GuestBook extends StatefulWidget {
-  GuestBook({required this.addMessage, required this.messages});
+  GuestBook(
+      {required this.addMessage,
+      required this.deleteMessage,
+      required this.messages});
   final FutureOr<void> Function(String messgae) addMessage;
+  final FutureOr<void> Function(String messageID) deleteMessage;
   final List<GuestBookMessage> messages;
 
   @override
@@ -337,7 +360,31 @@ class _GuestBookState extends State<GuestBook> {
         ),
         SizedBox(height: 8),
         for (var message in widget.messages)
-          Paragraph('${message.name}: ${message.message}'),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Paragraph('${message.name}: ${message.message}'),
+                    Padding(
+                      padding: EdgeInsets.only(left: 10.0),
+                      child: Text('${message.time}'),
+                    ),
+                  ],
+                ),
+              ),
+              if (message.name ==
+                  FirebaseAuth.instance.currentUser?.displayName)
+                Container(
+                  child: IconButton(
+                      icon: Icon(Icons.delete_outline),
+                      onPressed: () async {
+                        await widget.deleteMessage(message.id);
+                      }),
+                ),
+            ],
+          ),
         SizedBox(height: 8),
       ],
     );
